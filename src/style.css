@@ -1,0 +1,490 @@
+[hidden] {
+  display: none !important;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #040914;
+  color: #eef7ff;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+#app {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+}
+
+#control-panel {
+  position: fixed;
+  left: 20px;
+  top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: min(320px, calc(100vw - 40px));
+  padding: 16px;
+  border: 1px solid rgb(170 225 255 / 18%);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at top left, rgb(70 140 190 / 24%), transparent 38%),
+    linear-gradient(180deg, rgb(9 21 38 / 82%), rgb(4 9 20 / 70%));
+  box-shadow: 0 18px 60px rgb(0 0 0 / 38%);
+  backdrop-filter: blur(16px);
+  z-index: 10;
+}
+
+#hud {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  display: grid;
+  gap: 4px;
+  max-width: min(420px, calc(100vw - 40px));
+  color: rgb(238 247 255 / 82%);
+  font-size: 13px;
+  pointer-events: none;
+  z-index: 11;
+}
+
+#hud strong {
+  color: #fff;
+}
+
+.panel-heading {
+  display: grid;
+  gap: 3px;
+}
+
+.panel-heading strong {
+  font-size: 18px;
+  line-height: 1.1;
+}
+
+.eyebrow,
+.section-label {
+  color: rgb(220 240 255 / 58%);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.section-hint {
+  display: block;
+  color: rgb(220 240 255 / 42%);
+  font-size: 11px;
+  line-height: 1.4;
+  margin: 2px 0 2px;
+}
+
+.control-section {
+  display: grid;
+  gap: 9px;
+}
+
+.control-section p {
+  margin: 0;
+  color: rgb(238 247 255 / 72%);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.seg-run-btn {
+  justify-content: center;
+}
+
+button {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 38px;
+  padding: 9px 10px;
+  border: 1px solid rgb(180 230 255 / 14%);
+  border-radius: 12px;
+  background: rgb(255 255 255 / 7%);
+  color: rgb(242 250 255 / 92%);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    transform 140ms ease;
+}
+
+button:hover {
+  border-color: rgb(143 218 255 / 34%);
+  background: rgb(255 255 255 / 12%);
+}
+
+#spaitial-badge {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 5px 10px;
+  border: 1px solid rgb(124 200 255 / 22%);
+  border-radius: 999px;
+  background: rgb(124 200 255 / 8%);
+  color: rgb(238 247 255 / 72%);
+  font-size: 11px;
+  line-height: 1;
+  text-decoration: none;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
+}
+
+#spaitial-badge:hover {
+  border-color: rgb(124 200 255 / 46%);
+  background: rgb(124 200 255 / 14%);
+  color: #fff;
+}
+
+.spaitial-badge-label {
+  color: rgb(220 240 255 / 52%);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+}
+
+.spaitial-badge-brand {
+  color: #7cc8ff;
+  font-weight: 700;
+}
+
+#spaitial-badge:hover .spaitial-badge-brand {
+  color: #a8dbff;
+}
+
+button:active {
+  transform: translateY(1px);
+}
+
+kbd {
+  min-width: 18px;
+  padding: 2px 5px;
+  border: 1px solid rgb(180 230 255 / 18%);
+  border-radius: 6px;
+  background: rgb(0 0 0 / 25%);
+  color: rgb(238 247 255 / 68%);
+  font-size: 10px;
+  font-weight: 750;
+  line-height: 1.3;
+  text-align: center;
+}
+
+#segmentation-overlay {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* 3D-anchored object labels. Children are positioned per frame via transform from the
+   camera projection of each selected object's centroid (see SelectionViz.updateLabels). */
+#segmentation-labels {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 8;
+}
+
+.seg-label-tag {
+  position: fixed;
+  top: 0;
+  left: 0;
+  padding: 3px 8px;
+  border-radius: 8px;
+  color: #04121f;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  text-transform: capitalize;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 45%);
+  will-change: transform;
+}
+
+#segmentation-panel {
+  position: fixed;
+  right: 20px;
+  top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: min(300px, calc(100vw - 40px));
+  padding: 16px;
+  border: 1px solid rgb(170 225 255 / 18%);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at top right, rgb(120 110 200 / 22%), transparent 40%),
+    linear-gradient(180deg, rgb(12 16 38 / 84%), rgb(4 9 20 / 72%));
+  box-shadow: 0 18px 60px rgb(0 0 0 / 38%);
+  backdrop-filter: blur(16px);
+  z-index: 10;
+}
+
+#seg-prompt {
+  width: 100%;
+  min-height: 38px;
+  padding: 9px 12px;
+  border: 1px solid rgb(180 230 255 / 16%);
+  border-radius: 12px;
+  background: rgb(0 0 0 / 28%);
+  color: #f2faff;
+  font: inherit;
+  font-size: 13px;
+  box-sizing: border-box;
+}
+
+#seg-prompt:focus {
+  outline: none;
+  border-color: rgb(143 218 255 / 44%);
+}
+
+#seg-status {
+  margin: 0;
+  color: rgb(238 247 255 / 72%);
+  font-size: 12px;
+  line-height: 1.4;
+  min-height: 1.4em;
+}
+
+#seg-run.is-busy {
+  opacity: 0.7;
+  cursor: progress;
+}
+
+#seg-concepts {
+  width: 100%;
+  min-height: 60px;
+  padding: 9px 12px;
+  border: 1px solid rgb(180 230 255 / 16%);
+  border-radius: 12px;
+  background: rgb(0 0 0 / 28%);
+  color: #f2faff;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+#seg-concepts:focus {
+  outline: none;
+  border-color: rgb(143 218 255 / 44%);
+}
+
+#seg-concepts:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.seg-batch {
+  justify-content: center;
+  border-color: rgb(122 211 255 / 40%);
+  background: rgb(70 160 220 / 20%);
+}
+
+.seg-batch:hover {
+  background: rgb(70 160 220 / 30%);
+}
+
+.seg-batch:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.seg-batch-sub {
+  color: rgb(238 247 255 / 60%);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.seg-estimate {
+  margin: 0;
+  color: rgb(238 247 255 / 58%);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.seg-progress {
+  display: grid;
+  gap: 6px;
+}
+
+.seg-progress-track {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 10%);
+  overflow: hidden;
+}
+
+.seg-progress-bar {
+  width: 0%;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgb(122 211 255), rgb(150 130 255));
+  transition: width 160ms ease;
+}
+
+.seg-progress-text {
+  color: rgb(238 247 255 / 78%);
+  font-size: 12px;
+}
+
+.seg-cancel {
+  justify-content: center;
+  border-color: rgb(255 130 130 / 38%);
+  background: rgb(220 80 80 / 18%);
+  color: rgb(255 226 226 / 92%);
+}
+
+.seg-cancel:hover {
+  border-color: rgb(255 130 130 / 60%);
+  background: rgb(220 80 80 / 28%);
+}
+
+.seg-recolor {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 4px 0 2px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: rgb(220 240 255 / 62%);
+}
+
+.seg-recolor select {
+  flex: 0 0 auto;
+  padding: 5px 8px;
+  border-radius: 8px;
+  border: 1px solid rgb(150 190 255 / 22%);
+  background: rgb(18 26 42 / 80%);
+  color: rgb(238 247 255 / 92%);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: normal;
+  cursor: pointer;
+}
+
+.seg-recolor select:focus-visible {
+  outline: 2px solid rgb(120 170 255 / 70%);
+  outline-offset: 1px;
+}
+
+.seg-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  max-height: 42vh;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.seg-empty {
+  color: rgb(238 247 255 / 55%);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.seg-item {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid rgb(180 230 255 / 12%);
+  border-radius: 12px;
+  background: rgb(255 255 255 / 5%);
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.seg-item:hover {
+  border-color: rgb(180 230 255 / 30%);
+  background: rgb(255 255 255 / 8%);
+}
+
+.seg-item.is-selected {
+  border-color: rgb(120 220 255 / 70%);
+  background: rgb(120 220 255 / 14%);
+  box-shadow: 0 0 0 1px rgb(120 220 255 / 45%) inset;
+}
+
+.seg-swatch {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 30%);
+}
+
+.seg-meta {
+  display: grid;
+  flex: 1 1 auto;
+  gap: 2px;
+  min-width: 0;
+}
+
+.seg-label {
+  font-size: 13px;
+  font-weight: 650;
+  text-transform: capitalize;
+}
+
+.seg-count {
+  color: rgb(238 247 255 / 60%);
+  font-size: 11px;
+}
+
+.seg-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+
+.seg-actions button {
+  min-height: 28px;
+  min-width: 28px;
+  padding: 4px 6px;
+  justify-content: center;
+}
+
+@media (max-width: 720px) {
+  #control-panel {
+    right: 12px;
+    left: 12px;
+    top: 12px;
+    width: auto;
+  }
+
+  #segmentation-panel {
+    right: 12px;
+    left: 12px;
+    top: auto;
+    bottom: 12px;
+    width: auto;
+  }
+}
