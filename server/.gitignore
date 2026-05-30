@@ -1,0 +1,16 @@
+# venv
+.venv/
+
+# python caches
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# downloaded model weights (auto-fetched by ultralytics / HF on first use)
+*.pt
+*.pth
+*.safetensors
+
+# ultralytics / matplotlib local config + caches
+Ultralytics/
+.matplotlib/
