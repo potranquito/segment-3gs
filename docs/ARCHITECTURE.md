@@ -1,6 +1,6 @@
 # Architecture — On-Demand Object Segmentation in a Gaussian-Splat World
 
-**Splat Segmenter** renders a multi-million-Gaussian splat scene in PlayCanvas and lets you
+**segment-3gs** renders a multi-million-Gaussian splat scene in PlayCanvas and lets you
 segment objects (sofa, chair, cup, pillow…) **on demand**. Each 2D mask from a local SAM
 server is **lifted** into the 3D splats, where it becomes a persistent, world-locked,
 selectable object that you can re-highlight, frame from any angle, and **recolor or isolate at

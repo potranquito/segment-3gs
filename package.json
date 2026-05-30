@@ -1,5 +1,5 @@
 {
-  "name": "splat-segmenter",
+  "name": "segment-3gs",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -21,7 +21,7 @@
   "homepage": "https://app.spaitial.ai",
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-org/splat-segmenter.git"
+    "url": "https://github.com/risenW/segment-3gs.git"
   },
   "scripts": {
     "dev": "vite --host 0.0.0.0",

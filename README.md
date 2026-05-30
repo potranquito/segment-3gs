@@ -1,4 +1,4 @@
-# Splat Segmenter
+# segment-3gs
 
 [![Powered by SpAItial AI](https://img.shields.io/badge/Powered%20by-SpAItial%20AI-7cc8ff?style=flat-square)](https://app.spaitial.ai)
 
@@ -17,7 +17,7 @@ local Python SAM server, and a full 2D→3D lift + multi-view voting + true gspl
 pipeline so you can build your own splat-understanding tools on top.
 
 <!-- screenshot: drop a screenshot at docs/screenshot.png and it renders below -->
-<!-- ![Splat Segmenter](docs/screenshot.png) -->
+<!-- ![segment-3gs](docs/screenshot.png) -->
 
 ## What this is
 
@@ -196,7 +196,7 @@ SpAItial AI.
   PlayCanvas `.ply` with the script above. (Developer keys + usage at
   [developers.spaitial.ai](https://developers.spaitial.ai).)
 
-This Splat Segmenter is an open-source showcase of what you can build on top of SpAItial AI
+This segment-3gs is an open-source showcase of what you can build on top of SpAItial AI
 worlds — bring a world, segment it, and lift the masks into 3D.
 
 ## License & attribution
