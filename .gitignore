@@ -1,0 +1,32 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+
+# python virtualenvs
+.venv/
+.venv-spz/
+server/.venv/
+
+# python caches
+**/__pycache__/
+*.pyc
+.pytest_cache/
+
+# tool-generated config / caches
+server/Ultralytics/
+server/.matplotlib/
+
+# model weights (auto-downloaded by ultralytics / HF on first use)
+*.pt
+*.pth
+*.safetensors
+
+# heavy local assets — bring your own splat (see README "Bring your own splat")
+public/*.ply
+public/*.spz
+
+# os / editor cruft
+.DS_Store
+*.log

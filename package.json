@@ -1,0 +1,39 @@
+{
+  "name": "splat-segmenter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A PlayCanvas Gaussian-splat viewer with on-demand SAM3 object segmentation that lifts 2D masks into the 3D splats, multi-view confidence voting, and true gsplat recolor/isolate.",
+  "keywords": [
+    "gaussian-splatting",
+    "segmentation",
+    "sam3",
+    "segment-anything",
+    "playcanvas",
+    "webgl",
+    "3d",
+    "point-cloud",
+    "vite",
+    "typescript"
+  ],
+  "license": "MIT",
+  "author": "SpAItial AI (https://app.spaitial.ai)",
+  "homepage": "https://app.spaitial.ai",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-org/splat-segmenter.git"
+  },
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 0.0.0.0"
+  },
+  "dependencies": {
+    "playcanvas": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.8.0",
+    "vite": "^6.4.2"
+  }
+}

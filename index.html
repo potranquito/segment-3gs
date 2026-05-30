@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Splat Segmenter — Powered by SpAItial AI</title>
+  </head>
+  <body>
+    <canvas id="app"></canvas>
+    <aside id="control-panel" aria-label="Scene controls">
+      <div class="panel-heading">
+        <span class="eyebrow">Gaussian Splat</span>
+        <strong>Splat Segmenter</strong>
+      </div>
+
+      <section class="control-section">
+        <span class="section-label">Camera</span>
+        <p>Drag to orbit · wheel to zoom</p>
+        <p>WASD / arrows pan · Q/E lower/raise</p>
+      </section>
+
+      <a
+        id="spaitial-badge"
+        href="https://app.spaitial.ai"
+        target="_blank"
+        rel="noopener noreferrer"
+        title="3D world generated with SpAItial AI"
+      >
+        <span class="spaitial-badge-label">Powered by</span>
+        <span class="spaitial-badge-brand">SpAItial AI</span>
+      </a>
+    </aside>
+    <aside id="segmentation-panel" aria-label="Object segmentation">
+      <div class="panel-heading">
+        <span class="eyebrow">SAM3 · Lift to 3D</span>
+        <strong>Object Segmentation</strong>
+      </div>
+
+      <section class="control-section">
+        <span class="section-label">Concept</span>
+        <input id="seg-prompt" type="text" placeholder="sofa, teacup, chair…" autocomplete="off" />
+        <button id="seg-run" type="button" class="seg-run-btn">Segment View <kbd>G</kbd></button>
+        <p id="seg-status">Initializing…</p>
+      </section>
+
+      <section class="control-section">
+        <span class="section-label">Batch Sweep</span>
+        <textarea
+          id="seg-concepts"
+          rows="3"
+          spellcheck="false"
+          autocomplete="off"
+          placeholder="comma or newline separated concepts"
+        ></textarea>
+        <button id="seg-batch" type="button" class="seg-batch">Batch Segment <span class="seg-batch-sub">16 views</span></button>
+        <p id="seg-estimate" class="seg-estimate"></p>
+        <div id="seg-progress" class="seg-progress" hidden>
+          <div class="seg-progress-track"><div id="seg-progress-bar" class="seg-progress-bar"></div></div>
+          <span id="seg-progress-text" class="seg-progress-text"></span>
+        </div>
+        <button id="seg-cancel" type="button" class="seg-cancel" hidden>Cancel sweep</button>
+      </section>
+
+      <section class="control-section">
+        <span class="section-label">Segmented Objects</span>
+        <span class="section-hint">Click an object to highlight its splats in 3D. The 2D mask overlay is live-only; the 3D highlight persists across reloads.</span>
+        <label class="seg-recolor" for="seg-recolor-mode">
+          <span>Gaussian view</span>
+          <select id="seg-recolor-mode" title="Tint or isolate the actual Gaussians of selected objects">
+            <option value="off">Point highlight</option>
+            <option value="recolor">Recolor + dim rest</option>
+            <option value="isolate">Isolate selected</option>
+          </select>
+        </label>
+        <ul id="seg-list" class="seg-list"></ul>
+      </section>
+    </aside>
+    <div id="hud" aria-live="polite"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
