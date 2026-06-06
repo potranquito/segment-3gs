@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "A PlayCanvas Gaussian-splat viewer with on-demand SAM3 object segmentation that lifts 2D masks into the 3D splats, multi-view confidence voting, and true gsplat recolor/isolate.",
+  "description": "SpAItial AI scene with on-demand SAM3 object segmentation that lifts 2D masks into the 3D splats, multi-view confidence voting, and true gsplat recolor/isolate.",
   "keywords": [
     "gaussian-splatting",
     "segmentation",
@@ -17,8 +17,8 @@
     "typescript"
   ],
   "license": "MIT",
-  "author": "SpAItial AI (https://app.spaitial.ai)",
-  "homepage": "https://app.spaitial.ai",
+  "author": "Rising Odegua",
+  "homepage": "https://github.com/risenW/segment-3gs",
   "repository": {
     "type": "git",
     "url": "https://github.com/risenW/segment-3gs.git"
