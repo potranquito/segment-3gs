@@ -40,6 +40,11 @@ export class SegmentationSystem {
   private batchRunning = false;
   private batchCancelled = false;
   private batchAbort: AbortController | null = null;
+  // The 2D mask overlay is painted in screen space and can't track the scene in 3D, so it
+  // only makes sense while the camera is still. We snapshot the camera position when the
+  // overlay is drawn and clear it the moment the camera moves — the persistent 3D point
+  // highlight (SelectionViz, built from world-space splat indices) then carries the object.
+  private overlayAnchor: pc.Vec3 | null = null;
 
   constructor(deps: SegmentationDeps) {
     this.deps = deps;
@@ -58,7 +63,23 @@ export class SegmentationSystem {
   init(): void {
     this.buildIndex();
     this.bindKeyboard();
+    this.bindOverlayAutoClear();
     void this.reportServerStatus();
+  }
+
+  // Drop the screen-space mask overlay as soon as the camera leaves the pose it was
+  // captured from; otherwise the flat painted mask slides off the object as you orbit.
+  private bindOverlayAutoClear(): void {
+    this.deps.app.on("update", () => {
+      if (!this.overlayAnchor || this.batchRunning) return;
+      const pos = this.deps.camera.getPosition();
+      if (pos.distance(this.overlayAnchor) > 1e-3) this.clearOverlay();
+    });
+  }
+
+  private clearOverlay(): void {
+    this.overlay.clear();
+    this.overlayAnchor = null;
   }
 
   private buildIndex(): void {
@@ -144,6 +165,8 @@ export class SegmentationSystem {
       }
 
       this.overlay.draw(layers);
+      // Anchor the overlay to the current camera pose so the auto-clear can detect motion.
+      this.overlayAnchor = layers.length > 0 ? this.deps.camera.getPosition().clone() : null;
       this.refresh();
       this.registry.save();
 

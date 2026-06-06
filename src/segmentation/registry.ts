@@ -147,10 +147,18 @@ export class SegmentationRegistry {
     return null;
   }
 
+  // First 8 objects pull hand-tuned palette colors; past that we walk the hue circle by
+  // the golden angle so every subsequent object still lands on a visually distinct color
+  // instead of repeating the palette.
   private nextColor(): Vec3 {
-    const color = PALETTE[this.colorCursor % PALETTE.length]!;
+    const i = this.colorCursor;
     this.colorCursor += 1;
-    return [color[0], color[1], color[2]];
+    if (i < PALETTE.length) {
+      const color = PALETTE[i]!;
+      return [color[0], color[1], color[2]];
+    }
+    const hue = ((i - PALETTE.length) * 0.61803398875) % 1;
+    return hsvToRgb(hue, 0.7, 1.0);
   }
 
   save(): void {
@@ -222,6 +230,22 @@ export class SegmentationRegistry {
     } catch (error) {
       console.warn("Failed to load persisted segmented objects", error);
     }
+  }
+}
+
+function hsvToRgb(h: number, s: number, v: number): Vec3 {
+  const i = Math.floor(h * 6);
+  const f = h * 6 - i;
+  const p = v * (1 - s);
+  const q = v * (1 - f * s);
+  const t = v * (1 - (1 - f) * s);
+  switch (i % 6) {
+    case 0: return [v, t, p];
+    case 1: return [q, v, p];
+    case 2: return [p, v, t];
+    case 3: return [p, q, v];
+    case 4: return [t, p, v];
+    default: return [v, p, q];
   }
 }
 

@@ -6,6 +6,9 @@ import type { SegmentedObject, Vec3 } from "./types";
 // Subsampling is uniform over the (sorted) index list — enough to read the shape.
 const HIGHLIGHT_POINT_CAP = 40_000;
 const HIGHLIGHT_POINT_SIZE = 6.0;
+// Let the underlying gaussians read through the highlight so it tints the object instead
+// of caking over it as a solid blob.
+const HIGHLIGHT_ALPHA = 0.55;
 
 const POINT_SHADER = {
   uniqueName: "seg-highlight-points",
@@ -24,10 +27,11 @@ const POINT_SHADER = {
   fragmentGLSL: /* glsl */ `
     precision highp float;
     uniform vec3 uColor;
+    uniform float uAlpha;
     void main(void) {
       vec2 d = gl_PointCoord - vec2(0.5);
       if (dot(d, d) > 0.25) discard;
-      gl_FragColor = vec4(uColor, 1.0);
+      gl_FragColor = vec4(uColor, uAlpha);
     }
   `,
 };
@@ -55,7 +59,13 @@ export class SelectionViz {
   // cloud). Created lazily in setCenters() once the splat count is known. The toggle below
   // is the panel's "Isolate / Recolor" control.
   private recolor: GsplatRecolor | null = null;
-  private recolorMode: RecolorMode = "off";
+  // Default to tinting the actual object Gaussians (the "mask"); the floating point cloud
+  // is opt-in via the "Point highlight" option.
+  private recolorMode: RecolorMode = "recolor";
+  // Last selection pushed through sync(), so a Gaussian-view mode change can re-evaluate
+  // whether the point cloud should be shown without waiting for the next registry refresh.
+  private lastObjects: SegmentedObject[] = [];
+  private lastSelected: ReadonlySet<string> = new Set();
 
   constructor(app: pc.Application, camera: pc.Entity) {
     this.app = app;
@@ -103,32 +113,42 @@ export class SelectionViz {
   private bindRecolorToggle(): void {
     const select = document.querySelector<HTMLSelectElement>("#seg-recolor-mode");
     if (!select) return;
+    select.value = this.recolorMode;
     const sync = (): void => {
       const value = select.value;
       this.recolorMode = value === "recolor" || value === "isolate" ? value : "off";
       this.recolor?.setMode(this.recolorMode);
+      // Re-run highlight logic: the point cloud only shows in "off" (Point highlight) mode.
+      this.sync(this.lastObjects, this.lastSelected);
     };
     select.addEventListener("change", sync);
     sync();
   }
 
   sync(objects: SegmentedObject[], selectedIds: ReadonlySet<string>): void {
+    this.lastObjects = objects;
+    this.lastSelected = selectedIds;
     // Recolor/isolate the actual Gaussians for the current selection (no-op when mode=off).
     this.recolor?.apply(objects, selectedIds);
 
     const byId = new Map(objects.map((object) => [object.id, object]));
 
-    // Drop highlights that are no longer selected (or whose object is gone).
+    // The point cloud is the highlight ONLY in "Point highlight" (off) mode; recolor/isolate
+    // tint the real Gaussians instead, so drop any point clouds in those modes.
+    const pointCloudActive = this.recolorMode === "off";
+
+    // Drop highlights that are no longer selected, whose object is gone, or that a
+    // Gaussian-view mode now supersedes.
     for (const [id, entity] of this.highlights) {
-      if (!selectedIds.has(id) || !byId.has(id)) {
+      if (!pointCloudActive || !selectedIds.has(id) || !byId.has(id)) {
         entity.destroy();
         this.highlights.delete(id);
       }
     }
     this.syncLabels(byId, selectedIds);
 
-    // Add a highlight for every newly selected object.
-    if (!this.centers) return;
+    // Add a highlight for every newly selected object (point-highlight mode only).
+    if (!this.centers || !pointCloudActive) return;
     for (const id of selectedIds) {
       if (this.highlights.has(id)) continue;
       const object = byId.get(id);
@@ -144,28 +164,13 @@ export class SelectionViz {
   // Keep one label per selected object, in the object color. Refresh text/color/centroid
   // each call so a merged object (centroid moved) re-anchors correctly. Positioning happens
   // per frame in updateLabels().
-  private syncLabels(byId: Map<string, SegmentedObject>, selectedIds: ReadonlySet<string>): void {
+  // Labels are intentionally disabled — the colored mask/highlight is the only selection
+  // cue. Kept as a no-op (clearing any strays) so the per-frame projection loop has nothing
+  // to position.
+  private syncLabels(_byId: Map<string, SegmentedObject>, _selectedIds: ReadonlySet<string>): void {
     for (const [id, entry] of this.labels) {
-      if (!selectedIds.has(id) || !byId.has(id)) {
-        entry.el.remove();
-        this.labels.delete(id);
-      }
-    }
-    for (const id of selectedIds) {
-      const object = byId.get(id);
-      if (!object) continue;
-      let entry = this.labels.get(id);
-      if (!entry) {
-        const el = document.createElement("div");
-        el.className = "seg-label-tag";
-        el.style.display = "none";
-        this.labelRoot.appendChild(el);
-        entry = { el, centroid: object.centroid };
-        this.labels.set(id, entry);
-      }
-      entry.centroid = object.centroid;
-      entry.el.textContent = object.label;
-      entry.el.style.background = `rgb(${rgb255(object.color[0])}, ${rgb255(object.color[1])}, ${rgb255(object.color[2])})`;
+      entry.el.remove();
+      this.labels.delete(id);
     }
   }
 
@@ -227,6 +232,7 @@ export class SelectionViz {
     const material = new pc.ShaderMaterial(POINT_SHADER);
     material.setParameter("uColor", [object.color[0], object.color[1], object.color[2]]);
     material.setParameter("uPointSize", HIGHLIGHT_POINT_SIZE);
+    material.setParameter("uAlpha", HIGHLIGHT_ALPHA);
     material.cull = pc.CULLFACE_NONE;
     // Draw on top of the (transparent) gsplats. Gaussian splats render in the blend pass
     // and don't write a depth the points can test against, so depthTest here would leave
@@ -241,8 +247,4 @@ export class SelectionViz {
     entity.addComponent("render", { meshInstances: [new pc.MeshInstance(mesh, material)], layers: [this.layer.id] });
     return entity;
   }
-}
-
-function rgb255(value: number): number {
-  return Math.round(value * 255);
 }
