@@ -40,6 +40,10 @@ export class SegmentationSystem {
   private batchRunning = false;
   private batchCancelled = false;
   private batchAbort: AbortController | null = null;
+  // Point-click instance mode — when active, canvas clicks fire a SAM point prompt
+  // using the current concept text as the label. Each click creates a new instance.
+  private pointMode = false;
+  private pointInstanceCounter = 0;
   // The 2D mask overlay is painted in screen space and can't track the scene in 3D, so it
   // only makes sense while the camera is still. We snapshot the camera position when the
   // overlay is drawn and clear it the moment the camera moves — the persistent 3D point
@@ -57,6 +61,10 @@ export class SegmentationSystem {
       onDelete: (id) => this.deleteObject(id),
       onBatchStart: () => void this.runBatch(),
       onBatchCancel: () => this.cancelBatch(),
+      onTogglePointMode: (active) => {
+        this.pointMode = active;
+        this.deps.canvas.style.cursor = active ? "crosshair" : "";
+      },
     });
   }
 
@@ -64,7 +72,76 @@ export class SegmentationSystem {
     this.buildIndex();
     this.bindKeyboard();
     this.bindOverlayAutoClear();
+    this.bindCanvasPointClick();
     void this.reportServerStatus();
+  }
+
+  // Canvas click handler — only fires when pointMode is ON. Converts the screen pixel
+  // to the downscaled capture-frame pixel and sends SAM a point prompt with the
+  // current "Concept" text as the label. Each click → new instance (auto-suffixed).
+  private bindCanvasPointClick(): void {
+    this.deps.canvas.addEventListener("click", (event) => {
+      if (!this.pointMode) return;
+      if (this.busy || this.batchRunning) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const rect = this.deps.canvas.getBoundingClientRect();
+      const cssX = event.clientX - rect.left;
+      const cssY = event.clientY - rect.top;
+      void this.segmentAtPoint(cssX, cssY, rect.width, rect.height);
+    });
+  }
+
+  private async segmentAtPoint(cssX: number, cssY: number, cssW: number, cssH: number): Promise<void> {
+    if (!this.grid || !this.registry) return;
+    const conceptBase = this.ui.getPromptText().trim() || "object";
+    // Auto-suffix so each click creates a distinct instance (otherwise the registry
+    // merges same-label objects whose splats overlap).
+    this.pointInstanceCounter += 1;
+    const label = `${conceptBase}_${this.pointInstanceCounter}`;
+    this.busy = true;
+    this.ui.setBusy(true, `Point-segmenting "${label}"…`);
+    try {
+      const frame = captureFrame(this.deps.canvas, this.deps.camera);
+      // Map CSS click coords to downscaled frame coords (captureFrame caps long edge
+      // at CAPTURE_MAX_DIM and pose.width/height reflect that).
+      const fx = (cssX / cssW) * frame.pose.width;
+      const fy = (cssY / cssH) * frame.pose.height;
+      // POINT-ONLY prompt: do NOT include text, otherwise SAM3 segments ALL coral
+      // in the frame (text-driven class search) instead of the single instance at
+      // the clicked pixel. The concept text becomes ONLY the registry label.
+      const prompts: SegmentPrompts = {
+        points: [{ x: fx, y: fy, label: 1 }],
+      };
+      const response = await this.api.segment(frame, prompts);
+      if (response.masks.length === 0) {
+        this.ui.setBusy(false, "No mask at that point");
+        return;
+      }
+      const layers: OverlayLayer[] = [];
+      let liftedCount = 0;
+      for (const maskResult of response.masks) {
+        if (maskResult.score < SEGMENT_MIN_SCORE) continue;
+        const mask = await decodeMask(maskResult, response.width, response.height);
+        // Override the label so each click creates a new instance.
+        mask.label = label;
+        const lifted = liftMask({ grid: this.grid }, frame.pose, mask, null);
+        if (!lifted) continue;
+        const { object } = this.registry.upsert(mask.label, lifted.indices, mask.score);
+        layers.push({ mask, color: object.color });
+        liftedCount += 1;
+      }
+      this.overlay.draw(layers);
+      this.overlayAnchor = layers.length > 0 ? this.deps.camera.getPosition().clone() : null;
+      this.refresh();
+      this.registry.save();
+      this.ui.setBusy(false, `Lifted "${label}" · ${liftedCount} mask(s) in ${response.elapsed_ms}ms`);
+    } catch (error) {
+      console.error("Point segmentation failed", error);
+      this.ui.setBusy(false, `Error: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      this.busy = false;
+    }
   }
 
   // Drop the screen-space mask overlay as soon as the camera leaves the pose it was

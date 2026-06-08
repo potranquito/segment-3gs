@@ -39,13 +39,14 @@ export interface SweepPose {
   distance: number;
 }
 
-// 8 yaw angles × 2 pitch angles = 16 outward gaze directions from the fixed center eye.
-export const YAW_STEPS = 8;
+// 20 yaw angles × 5 pitch angles = 100 outward gaze directions from the fixed center eye.
+// Bumped from the upstream 16 (8×2) because the reef splat covers a much wider scene than
+// the indoor SpAItial demos this was tuned for — more density catches the long tail of corals
+// hidden between obvious clusters.
+export const YAW_STEPS = 20;
 // Gaze pitch (look-around forward.y = sin(pitch)), so NEGATIVE tilts the gaze DOWN.
-// We pick a slightly-down look (~ -14°) and a near-level look (~ -3°) so the sweep
-// frames the surrounding walls, furniture, and floor that sit at/below eye level.
-// Both are ≤ 0 — we never stare at the ceiling.
-const PITCH_VALUES = [-0.25, -0.05];
+// 5 levels covers reef floor up to mid-water, which is where all the action is.
+const PITCH_VALUES = [-0.35, -0.20, -0.10, 0.0, 0.10];
 export const TOTAL_VIEWS = YAW_STEPS * PITCH_VALUES.length;
 
 // SAM3 runs ONE model forward per text phrase (~13s warm on MPS, ~20s cold), and a single

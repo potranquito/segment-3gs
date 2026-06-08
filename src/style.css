@@ -99,6 +99,12 @@ body {
   justify-content: center;
 }
 
+.seg-point-active {
+  background: rgb(80 200 140 / 28%) !important;
+  border-color: rgb(80 200 140 / 70%) !important;
+  color: rgb(220 255 235);
+}
+
 button {
   appearance: none;
   display: inline-flex;

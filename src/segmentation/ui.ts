@@ -9,6 +9,8 @@ export interface UiCallbacks {
   onDelete: (id: string) => void;
   onBatchStart: () => void;
   onBatchCancel: () => void;
+  /** Toggle point-prompt mode (clicks on canvas send SAM a point + current concept). */
+  onTogglePointMode: (active: boolean) => void;
 }
 
 const CONCEPTS_STORAGE_KEY = "segmentation.concepts.v1";
@@ -51,6 +53,18 @@ export class SegmentationUi {
     this.prompt.addEventListener("keydown", (event) => {
       if (event.key === "Enter") callbacks.onSegment(this.getPromptText());
     });
+    // Point-click mode toggle — when on, clicks in the 3D canvas fire a SAM point prompt
+    // (instead of orbiting the camera). The current "Concept" text becomes the label.
+    const pointBtn = document.getElementById("seg-point-mode") as HTMLButtonElement | null;
+    if (pointBtn) {
+      let active = false;
+      pointBtn.addEventListener("click", () => {
+        active = !active;
+        pointBtn.textContent = active ? "📍 Point Click Mode (ON)" : "📍 Point Click Mode (off)";
+        pointBtn.classList.toggle("seg-point-active", active);
+        callbacks.onTogglePointMode(active);
+      });
+    }
     this.batchButton.addEventListener("click", () => callbacks.onBatchStart());
     this.cancelButton.addEventListener("click", () => callbacks.onBatchCancel());
     this.list.addEventListener("click", (event) => {
