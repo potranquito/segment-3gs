@@ -161,6 +161,31 @@ export class SegmentationRegistry {
     return hsvToRgb(hue, 0.7, 1.0);
   }
 
+  /**
+   * Export all segmented objects as a JSON manifest that another app
+   * (OpenPreserve) can consume. World-space centroid + AABB per label,
+   * NOT raw Gaussian indices — so the consumer can use any splat
+   * representation (Spark.js .sog, gsplat .ply, etc.).
+   */
+  exportLabelsJson(sceneId: string): string {
+    const payload = {
+      schema: "openpreserve-labels/v1",
+      scene_id: sceneId,
+      exported_at: new Date().toISOString(),
+      labels: this.list().map((o) => ({
+        id: o.id,
+        label: o.label,
+        color: o.color,
+        centroid: o.centroid,
+        aabb: o.aabb,
+        splat_count: o.splatIndices.length,
+        source_views: o.sourceViews,
+        confidence: o.score,
+      })),
+    };
+    return JSON.stringify(payload, null, 2);
+  }
+
   save(): void {
     try {
       // Persist the raw vote/confidence evidence (candidates + votes + scores), not the

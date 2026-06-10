@@ -11,6 +11,8 @@ export interface UiCallbacks {
   onBatchCancel: () => void;
   /** Toggle point-prompt mode (clicks on canvas send SAM a point + current concept). */
   onTogglePointMode: (active: boolean) => void;
+  /** Download labels.json for OpenPreserve to consume. */
+  onExportLabels: () => void;
 }
 
 const CONCEPTS_STORAGE_KEY = "segmentation.concepts.v1";
@@ -64,6 +66,11 @@ export class SegmentationUi {
         pointBtn.classList.toggle("seg-point-active", active);
         callbacks.onTogglePointMode(active);
       });
+    }
+    // Export labels button — downloads labels.json for OpenPreserve.
+    const exportBtn = document.getElementById("seg-export") as HTMLButtonElement | null;
+    if (exportBtn) {
+      exportBtn.addEventListener("click", () => callbacks.onExportLabels());
     }
     this.batchButton.addEventListener("click", () => callbacks.onBatchStart());
     this.cancelButton.addEventListener("click", () => callbacks.onBatchCancel());

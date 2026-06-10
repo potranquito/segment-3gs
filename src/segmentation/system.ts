@@ -65,7 +65,30 @@ export class SegmentationSystem {
         this.pointMode = active;
         this.deps.canvas.style.cursor = active ? "crosshair" : "";
       },
+      onExportLabels: () => this.exportLabels(),
     });
+  }
+
+  /** Download a labels.json file the OpenPreserve game can consume. */
+  private exportLabels(): void {
+    if (!this.registry) {
+      this.ui.setStatus("No labels to export yet");
+      return;
+    }
+    // Use the splat URL filename as a stable scene id
+    const sceneId = (window as { SPLAT_URL?: string }).SPLAT_URL ?? "world";
+    const json = this.registry.exportLabelsJson(sceneId);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `labels-${Date.now()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    const count = this.registry.size();
+    this.ui.setStatus(`Exported ${count} labels to labels-<timestamp>.json`);
   }
 
   init(): void {
