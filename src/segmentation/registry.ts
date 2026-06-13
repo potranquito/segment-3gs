@@ -1,9 +1,30 @@
 import { computeBounds } from "./lift";
+import { idbGet, idbPut } from "./idb";
 import type { Aabb, SegmentedObject, Vec3 } from "./types";
 
 // Bumped to v2: payload now persists per-Gaussian vote/confidence evidence, not just a
 // flat index union. v1 blobs are ignored (load() guards on the version).
+// Persistence now lives in IndexedDB (typed arrays stored natively, big quota);
+// the old localStorage key is read once for migration then left alone.
 const STORAGE_KEY = "segmentation.objects.v2";
+const IDB_KEY = "segmentation.objects.v3";
+
+interface PersistedObject {
+  id: string;
+  label: string;
+  color: Vec3;
+  sourceViews: number;
+  score: number;
+  scientificName?: string;
+  description?: string;
+  idx: Uint32Array;
+  votes: Uint16Array;
+  scores: Float32Array;
+}
+interface PersistedPayload {
+  v: number;
+  objects: PersistedObject[];
+}
 const MERGE_OVERLAP_RATIO = 0.25;
 
 // --- Per-Gaussian confidence voting thresholds ---
@@ -276,57 +297,50 @@ export class SegmentationRegistry {
     return JSON.stringify(payload, null, 2);
   }
 
+  // Persist the raw vote/confidence evidence (candidates + votes + scores), not the
+  // derived membership. splatIndices is recomputed on load(), so tweaking the
+  // thresholds re-prunes existing objects on the next reload. IndexedDB stores the
+  // typed arrays natively (no base64), so a million-splat reef persists fine.
+  // Fire-and-forget: callers stay synchronous; the last write wins.
   save(): void {
-    try {
-      // Persist the raw vote/confidence evidence (candidates + votes + scores), not the
-      // derived membership. splatIndices is recomputed on load(), so tweaking the
-      // thresholds re-prunes existing objects on the next reload.
-      const payload = {
-        v: 2,
-        objects: this.list().map((object) => ({
-          id: object.id,
-          label: object.label,
-          color: object.color,
-          sourceViews: object.sourceViews,
-          score: object.score,
-          scientificName: object.scientificName,
-          description: object.description,
-          // base64 of the typed-array bytes — compact and lossless.
-          idx: encodeBytes(object.candidateIndices),
-          votes: encodeBytes(object.voteCounts),
-          scores: encodeBytes(object.scoreSums),
-        })),
-      };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-    } catch (error) {
-      console.warn("Failed to persist segmented objects (storage quota?)", error);
-    }
+    const payload = {
+      v: 3,
+      objects: this.list().map((object) => ({
+        id: object.id,
+        label: object.label,
+        color: object.color,
+        sourceViews: object.sourceViews,
+        score: object.score,
+        scientificName: object.scientificName,
+        description: object.description,
+        // Store copies so a later in-place mutation can't corrupt the pending write.
+        idx: object.candidateIndices.slice(),
+        votes: object.voteCounts.slice(),
+        scores: object.scoreSums.slice(),
+      })),
+    };
+    void idbPut(IDB_KEY, payload).catch((error) =>
+      console.warn("Failed to persist segmented objects to IndexedDB", error),
+    );
   }
 
-  load(): void {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return;
+  // Async because IndexedDB is async. Callers should await (or .then) before
+  // restoring selection / refreshing the list. Migrates a legacy localStorage v2
+  // blob on first run, then drops it.
+  async load(): Promise<void> {
     try {
-      const payload = JSON.parse(raw) as {
-        v?: number;
-        objects: Array<{
-          id: string;
-          label: string;
-          color: Vec3;
-          sourceViews: number;
-          score: number;
-          scientificName?: string;
-          description?: string;
-          idx: string;
-          votes: string;
-          scores: string;
-        }>;
-      };
-      if (payload.v !== 2 || !Array.isArray(payload.objects)) return;
+      let payload = await idbGet<PersistedPayload>(IDB_KEY);
+
+      if (!payload) {
+        payload = this.migrateLegacyLocalStorage() ?? undefined;
+        if (payload) void idbPut(IDB_KEY, payload).catch(() => {});
+      }
+      if (!payload || payload.v !== 3 || !Array.isArray(payload.objects)) return;
+
       for (const entry of payload.objects) {
-        const candidateIndices = new Uint32Array(decodeBytes(entry.idx).buffer);
-        const voteCounts = new Uint16Array(decodeBytes(entry.votes).buffer);
-        const scoreSums = new Float32Array(decodeBytes(entry.scores).buffer);
+        const candidateIndices = new Uint32Array(entry.idx);
+        const voteCounts = new Uint16Array(entry.votes);
+        const scoreSums = new Float32Array(entry.scores);
         const object: SegmentedObject = {
           id: entry.id,
           label: entry.label,
@@ -342,14 +356,53 @@ export class SegmentationRegistry {
           scientificName: entry.scientificName,
           description: entry.description,
         };
-        // Re-derive membership + bounds from the persisted evidence under the current
-        // thresholds.
         this.recomputeMembership(object);
         this.objects.set(object.id, object);
         this.colorCursor += 1;
       }
     } catch (error) {
       console.warn("Failed to load persisted segmented objects", error);
+    }
+  }
+
+  // One-time migration of the old base64 localStorage v2 blob → v3 typed-array
+  // payload. Returns null if absent/unparseable. Removes the legacy key on success.
+  private migrateLegacyLocalStorage(): PersistedPayload | null {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    try {
+      const old = JSON.parse(raw) as {
+        v?: number;
+        objects: Array<{
+          id: string;
+          label: string;
+          color: Vec3;
+          sourceViews: number;
+          score: number;
+          scientificName?: string;
+          description?: string;
+          idx: string;
+          votes: string;
+          scores: string;
+        }>;
+      };
+      if (old.v !== 2 || !Array.isArray(old.objects)) return null;
+      const objects = old.objects.map((e) => ({
+        id: e.id,
+        label: e.label,
+        color: e.color,
+        sourceViews: e.sourceViews,
+        score: e.score,
+        scientificName: e.scientificName,
+        description: e.description,
+        idx: new Uint32Array(decodeBytes(e.idx).buffer),
+        votes: new Uint16Array(decodeBytes(e.votes).buffer),
+        scores: new Float32Array(decodeBytes(e.scores).buffer),
+      }));
+      localStorage.removeItem(STORAGE_KEY);
+      return { v: 3, objects };
+    } catch {
+      return null;
     }
   }
 }
@@ -478,20 +531,9 @@ function rayAabb(origin: Vec3, dir: Vec3, aabb: Aabb): number | null {
   return tmin;
 }
 
-// Base64 of a typed array's raw bytes. Works for any typed array (the caller
-// reinterprets the decoded bytes with the matching constructor).
-function encodeBytes(array: Uint32Array | Uint16Array | Float32Array): string {
-  const bytes = new Uint8Array(array.buffer, array.byteOffset, array.byteLength);
-  let binary = "";
-  const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
-  }
-  return btoa(binary);
-}
-
 // Decode base64 into a freshly-allocated, 0-offset Uint8Array so its `.buffer` can be
-// safely reinterpreted as Uint32/Uint16/Float32 by the caller.
+// safely reinterpreted as Uint32/Uint16/Float32 by the caller. Used only by the
+// one-time localStorage→IndexedDB migration (legacy v2 blobs were base64).
 function decodeBytes(encoded: string): Uint8Array {
   const binary = atob(encoded);
   const bytes = new Uint8Array(binary.length);

@@ -35,6 +35,9 @@ export class SegmentationSystem {
   private readonly ui: SegmentationUi;
   private grid: SplatGrid | null = null;
   private registry: SegmentationRegistry | null = null;
+  // Resolves once persisted objects have loaded — auto-label must wait on this so
+  // it doesn't re-segment a scene that already has saved objects.
+  private loadComplete: Promise<void> = Promise.resolve();
   private readonly selectedIds = new Set<string>();
   private busy = false;
   private batchRunning = false;
@@ -330,13 +333,18 @@ export class SegmentationSystem {
       this.grid = SplatGrid.fromSplatEntity(this.deps.splatEntity, this.deps.cellSize);
       this.registry = new SegmentationRegistry(this.grid.centers);
       this.viz.setCenters(this.grid.centers);
-      this.registry.load();
-      this.restoreSelection();
+      // Persistence is async (IndexedDB). Build the grid synchronously so the tool
+      // is usable immediately; restore saved objects + refresh the list once they
+      // load. Selection restore depends on objects existing, so it runs in the .then.
+      this.loadComplete = this.registry.load().then(() => {
+        this.restoreSelection();
+        this.refresh();
+        console.info("Restored segmented objects", { restored: this.registry?.size() ?? 0 });
+      });
       this.refresh();
       console.info("Segmentation index built", {
         ...this.grid.stats,
         totalMs: Math.round(performance.now() - start),
-        restored: this.registry.size(),
       });
     } catch (error) {
       console.error("Failed to build segmentation index", error);
@@ -360,11 +368,15 @@ export class SegmentationSystem {
   private maybeAutoLabel(model: string): void {
     if (!this.ui.isAutoLabelEnabled()) return;
     if (model === "mock") return;
-    if (!this.registry || this.registry.size() > 0) return;
-    const concepts = this.ui.getConcepts();
-    if (concepts.length === 0) return;
-    this.ui.setStatus(`Auto-labeling: batch sweep over ${concepts.length} concepts…`);
-    void this.runBatch();
+    // Wait for persisted objects to finish loading before deciding — otherwise a
+    // scene with saved labels would get re-segmented on every reload.
+    void this.loadComplete.then(() => {
+      if (!this.registry || this.registry.size() > 0) return;
+      const concepts = this.ui.getConcepts();
+      if (concepts.length === 0) return;
+      this.ui.setStatus(`Auto-labeling: batch sweep over ${concepts.length} concepts…`);
+      void this.runBatch();
+    });
   }
 
   private bindKeyboard(): void {
