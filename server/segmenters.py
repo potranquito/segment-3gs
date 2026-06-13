@@ -329,17 +329,29 @@ class Sam3Segmenter(Segmenter):
 
         # Transformers SAM3 image path has no native point prompt -> synthesize a
         # small box around each foreground click.
+        #
+        # SAM3 box prompts return EVERY instance its detection head finds (often
+        # near-whole-frame masks when the box gives weak signal). A click is an
+        # instance-SELECTION gesture, so: keep only masks that contain the clicked
+        # pixel, then return the smallest such mask (the most specific instance).
         h = self.POINT_BOX_HALF
         for i, p in enumerate(prompts.points):
             if p.label == 0:
                 continue
             synth = [p.x - h, p.y - h, p.x + h, p.y + h]
-            for score, mask in self._run(
+            candidates = self._run(
                 image, out_width, out_height, input_boxes=[synth], input_boxes_labels=[1]
-            ):
-                results.append(
-                    MaskResult(label=f"point_{i}", score=score, mask=mask, bbox=mask_to_bbox(mask))
-                )
+            )
+            px = min(max(int(round(p.x)), 0), out_width - 1)
+            py = min(max(int(round(p.y)), 0), out_height - 1)
+            containing = [(score, mask) for score, mask in candidates if mask[py, px]]
+            if not containing:
+                continue
+            containing.sort(key=lambda sm: int(sm[1].sum()))
+            score, mask = containing[0]
+            results.append(
+                MaskResult(label=f"point_{i}", score=score, mask=mask, bbox=mask_to_bbox(mask))
+            )
 
         message = None
         if prompts.empty:
