@@ -122,6 +122,25 @@ export class SegmentationRegistry {
   }
 
   /**
+   * Author-editable species metadata. label = common name; empty strings clear
+   * the optional fields.
+   */
+  updateMetadata(
+    id: string,
+    fields: { label?: string; scientificName?: string; description?: string },
+  ): void {
+    const object = this.objects.get(id);
+    if (!object) return;
+    if (fields.label !== undefined && fields.label.trim()) object.label = fields.label.trim();
+    if (fields.scientificName !== undefined) {
+      object.scientificName = fields.scientificName.trim() || undefined;
+    }
+    if (fields.description !== undefined) {
+      object.description = fields.description.trim() || undefined;
+    }
+  }
+
+  /**
    * Deep-copy an object's full state so the eraser can offer undo. The copy is
    * detached from the live object (typed arrays sliced, nested arrays cloned).
    */
@@ -250,6 +269,8 @@ export class SegmentationRegistry {
         splat_count: o.splatIndices.length,
         source_views: o.sourceViews,
         confidence: o.score,
+        scientific_name: o.scientificName ?? null,
+        description: o.description ?? null,
       })),
     };
     return JSON.stringify(payload, null, 2);
@@ -268,6 +289,8 @@ export class SegmentationRegistry {
           color: object.color,
           sourceViews: object.sourceViews,
           score: object.score,
+          scientificName: object.scientificName,
+          description: object.description,
           // base64 of the typed-array bytes — compact and lossless.
           idx: encodeBytes(object.candidateIndices),
           votes: encodeBytes(object.voteCounts),
@@ -292,6 +315,8 @@ export class SegmentationRegistry {
           color: Vec3;
           sourceViews: number;
           score: number;
+          scientificName?: string;
+          description?: string;
           idx: string;
           votes: string;
           scores: string;
@@ -314,6 +339,8 @@ export class SegmentationRegistry {
           aabb: { min: [0, 0, 0], max: [0, 0, 0] },
           sourceViews: entry.sourceViews,
           score: entry.score,
+          scientificName: entry.scientificName,
+          description: entry.description,
         };
         // Re-derive membership + bounds from the persisted evidence under the current
         // thresholds.

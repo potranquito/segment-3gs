@@ -47,6 +47,24 @@
       </section>
 
       <section class="control-section">
+        <span class="section-label">Labeling</span>
+        <label class="seg-recolor" for="seg-ecosystem">
+          <span>Environment</span>
+          <select id="seg-ecosystem" title="Fills the concept list with defaults for this environment type">
+            <option value="reef" selected>Coral reef</option>
+            <option value="wetland">Wetland / marsh</option>
+            <option value="savanna">Savanna</option>
+            <option value="forest">Forest</option>
+            <option value="generic">Generic</option>
+          </select>
+        </label>
+        <label class="seg-recolor" for="seg-autolabel" title="When the scene loads with no saved objects, run a labeling sweep automatically">
+          <span>Auto-label on load</span>
+          <input id="seg-autolabel" type="checkbox" checked />
+        </label>
+      </section>
+
+      <section class="control-section">
         <span class="section-label">Batch Sweep</span>
         <textarea
           id="seg-concepts"

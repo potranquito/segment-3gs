@@ -74,6 +74,12 @@ export class SegmentationSystem {
       },
       onToggleEraser: (active) => this.setEraserMode(active),
       onExportLabels: () => this.exportLabels(),
+      onUpdateMetadata: (id, fields) => {
+        if (!this.registry) return;
+        this.registry.updateMetadata(id, fields);
+        this.registry.save();
+        this.refresh();
+      },
     });
   }
 
@@ -342,9 +348,23 @@ export class SegmentationSystem {
     const health = await this.api.health();
     if (health) {
       this.ui.setStatus(`Server ready · ${health.model} (${health.device})`);
+      this.maybeAutoLabel(health.model);
     } else {
       this.ui.setStatus(`Mock mode · ${this.api.getServerUrl()} unreachable`);
     }
+  }
+
+  // The "labeling step": when a scene loads with no saved objects and a real SAM
+  // server is up, run the batch sweep automatically using the environment-preset
+  // concepts. The author then refines (point-click instances, eraser, ✎ metadata).
+  private maybeAutoLabel(model: string): void {
+    if (!this.ui.isAutoLabelEnabled()) return;
+    if (model === "mock") return;
+    if (!this.registry || this.registry.size() > 0) return;
+    const concepts = this.ui.getConcepts();
+    if (concepts.length === 0) return;
+    this.ui.setStatus(`Auto-labeling: batch sweep over ${concepts.length} concepts…`);
+    void this.runBatch();
   }
 
   private bindKeyboard(): void {

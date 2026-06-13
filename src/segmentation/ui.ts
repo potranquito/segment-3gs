@@ -15,11 +15,26 @@ export interface UiCallbacks {
   onToggleEraser: (active: boolean) => void;
   /** Download labels.json for OpenPreserve to consume. */
   onExportLabels: () => void;
+  /** Save author-edited species metadata for an object. */
+  onUpdateMetadata: (
+    id: string,
+    fields: { label: string; scientificName: string; description: string },
+  ) => void;
 }
 
 const CONCEPTS_STORAGE_KEY = "segmentation.concepts.v1";
-// Cost scales with views × concepts, so keep the default list modest.
-const DEFAULT_CONCEPTS = "sofa, chair, table, cup, pillow, plant, lamp, vase";
+const ECOSYSTEM_STORAGE_KEY = "segmentation.ecosystem.v1";
+const AUTOLABEL_STORAGE_KEY = "segmentation.autolabel.v1";
+
+// Default concept lists per environment type — the "labeling step" presets.
+// Cost scales with views × concepts, so keep each list modest.
+const ECOSYSTEM_PRESETS: Record<string, string> = {
+  reef: "coral, rock, sand, starfish, fish, sponge",
+  wetland: "reeds, cattails, grass, shrub, tree, water",
+  savanna: "tree, shrub, grass, rock, termite mound",
+  forest: "tree, shrub, fern, fallen log, rock",
+  generic: "object",
+};
 
 export class SegmentationUi {
   private readonly prompt: HTMLInputElement;
@@ -35,6 +50,11 @@ export class SegmentationUi {
   private readonly estimate: HTMLElement;
   private pointBtn: HTMLButtonElement | null = null;
   private eraserBtn: HTMLButtonElement | null = null;
+  private autoLabelCheckbox: HTMLInputElement | null = null;
+  // Which object's inline metadata editor is open (survives re-renders).
+  private editingId: string | null = null;
+  private lastObjects: SegmentedObject[] = [];
+  private lastSelected: ReadonlySet<string> = new Set();
 
   constructor(callbacks: UiCallbacks) {
     this.prompt = requireElement<HTMLInputElement>("#seg-prompt");
@@ -49,7 +69,31 @@ export class SegmentationUi {
     this.progressText = requireElement<HTMLElement>("#seg-progress-text");
     this.estimate = requireElement<HTMLElement>("#seg-estimate");
 
-    this.concepts.value = localStorage.getItem(CONCEPTS_STORAGE_KEY) ?? DEFAULT_CONCEPTS;
+    // Ecosystem preset drives the default concept list; a saved custom list wins.
+    const ecosystem = document.getElementById("seg-ecosystem") as HTMLSelectElement | null;
+    const savedEco = localStorage.getItem(ECOSYSTEM_STORAGE_KEY) ?? "reef";
+    if (ecosystem) {
+      ecosystem.value = savedEco;
+      ecosystem.addEventListener("change", () => {
+        localStorage.setItem(ECOSYSTEM_STORAGE_KEY, ecosystem.value);
+        const preset = ECOSYSTEM_PRESETS[ecosystem.value];
+        if (preset) {
+          this.concepts.value = preset;
+          this.persistConcepts();
+          this.updateEstimate();
+        }
+      });
+    }
+    this.concepts.value =
+      localStorage.getItem(CONCEPTS_STORAGE_KEY) ?? ECOSYSTEM_PRESETS[savedEco] ?? ECOSYSTEM_PRESETS.generic!;
+
+    this.autoLabelCheckbox = document.getElementById("seg-autolabel") as HTMLInputElement | null;
+    if (this.autoLabelCheckbox) {
+      this.autoLabelCheckbox.checked = localStorage.getItem(AUTOLABEL_STORAGE_KEY) !== "0";
+      this.autoLabelCheckbox.addEventListener("change", () => {
+        localStorage.setItem(AUTOLABEL_STORAGE_KEY, this.autoLabelCheckbox!.checked ? "1" : "0");
+      });
+    }
     this.updateEstimate();
     this.concepts.addEventListener("input", () => this.updateEstimate());
     this.concepts.addEventListener("change", () => this.persistConcepts());
@@ -92,6 +136,7 @@ export class SegmentationUi {
       if (!(target instanceof HTMLElement)) return;
       const deleteButton = target.closest<HTMLButtonElement>("button[data-action='delete']");
       if (deleteButton?.dataset.id) {
+        if (this.editingId === deleteButton.dataset.id) this.editingId = null;
         callbacks.onDelete(deleteButton.dataset.id);
         return;
       }
@@ -102,6 +147,34 @@ export class SegmentationUi {
         callbacks.onFocus(focusButton.dataset.id);
         return;
       }
+      // Metadata editor: open / save / cancel.
+      const editButton = target.closest<HTMLButtonElement>("button[data-action='edit']");
+      if (editButton?.dataset.id) {
+        this.editingId = this.editingId === editButton.dataset.id ? null : editButton.dataset.id;
+        this.renderList(this.lastObjects, this.lastSelected);
+        return;
+      }
+      const saveButton = target.closest<HTMLButtonElement>("button[data-action='meta-save']");
+      if (saveButton?.dataset.id) {
+        const row = saveButton.closest<HTMLElement>(".seg-item");
+        const get = (cls: string) =>
+          (row?.querySelector<HTMLInputElement | HTMLTextAreaElement>(`.${cls}`)?.value ?? "").trim();
+        callbacks.onUpdateMetadata(saveButton.dataset.id, {
+          label: get("seg-meta-name"),
+          scientificName: get("seg-meta-sci"),
+          description: get("seg-meta-desc"),
+        });
+        this.editingId = null;
+        return;
+      }
+      const cancelButton = target.closest<HTMLButtonElement>("button[data-action='meta-cancel']");
+      if (cancelButton) {
+        this.editingId = null;
+        this.renderList(this.lastObjects, this.lastSelected);
+        return;
+      }
+      // Clicks inside the editor form shouldn't toggle the row selection.
+      if (target.closest(".seg-editor")) return;
       const row = target.closest<HTMLElement>(".seg-item[data-id]");
       if (row?.dataset.id) callbacks.onToggle(row.dataset.id);
     });
@@ -190,7 +263,13 @@ export class SegmentationUi {
     this.status.textContent = text;
   }
 
+  isAutoLabelEnabled(): boolean {
+    return this.autoLabelCheckbox?.checked ?? false;
+  }
+
   renderList(objects: SegmentedObject[], selectedIds: ReadonlySet<string>): void {
+    this.lastObjects = objects;
+    this.lastSelected = selectedIds;
     if (objects.length === 0) {
       this.list.innerHTML = `<li class="seg-empty">No objects yet — run a Batch Segment, or type a concept and press G.</li>`;
       return;
@@ -199,17 +278,36 @@ export class SegmentationUi {
       .map((object) => {
         const swatch = `rgb(${rgb255(object.color[0])}, ${rgb255(object.color[1])}, ${rgb255(object.color[2])})`;
         const selected = selectedIds.has(object.id) ? " is-selected" : "";
+        const sci = object.scientificName
+          ? `<span class="seg-count"><em>${escapeHtml(object.scientificName)}</em></span>`
+          : "";
+        const editor =
+          this.editingId === object.id
+            ? `
+            <div class="seg-editor" style="grid-column:1/-1;display:flex;flex-direction:column;gap:4px;margin-top:6px;width:100%">
+              <input class="seg-meta-name" type="text" placeholder="Common name" value="${escapeHtml(object.label)}" />
+              <input class="seg-meta-sci" type="text" placeholder="Scientific name" value="${escapeHtml(object.scientificName ?? "")}" />
+              <textarea class="seg-meta-desc" rows="2" placeholder="Description / fun fact (shown to players)">${escapeHtml(object.description ?? "")}</textarea>
+              <div style="display:flex;gap:6px">
+                <button type="button" data-action="meta-save" data-id="${object.id}">Save</button>
+                <button type="button" data-action="meta-cancel">Cancel</button>
+              </div>
+            </div>`
+            : "";
         return `
-          <li class="seg-item${selected}" data-id="${object.id}" title="Click to toggle highlight in 3D" aria-pressed="${selectedIds.has(object.id)}">
+          <li class="seg-item${selected}" data-id="${object.id}" title="Click to toggle highlight in 3D" aria-pressed="${selectedIds.has(object.id)}" style="flex-wrap:wrap">
             <span class="seg-swatch" style="background:${swatch}"></span>
             <span class="seg-meta">
               <span class="seg-label">${escapeHtml(object.label)}</span>
+              ${sci}
               <span class="seg-count">${object.splatIndices.length.toLocaleString()} splats · ${object.sourceViews} view${object.sourceViews > 1 ? "s" : ""}</span>
             </span>
             <span class="seg-actions">
+              <button type="button" data-action="edit" data-id="${object.id}" title="Edit species info">✎</button>
               <button type="button" data-action="focus" data-id="${object.id}" title="Frame this object">⤢</button>
               <button type="button" data-action="delete" data-id="${object.id}" title="Delete">✕</button>
             </span>
+            ${editor}
           </li>`;
       })
       .join("");

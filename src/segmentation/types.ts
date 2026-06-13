@@ -93,4 +93,7 @@ export interface SegmentedObject {
   aabb: Aabb;
   sourceViews: number;
   score: number;
+  // --- Author-editable species metadata (label = common name) ---
+  scientificName?: string;
+  description?: string;
 }
