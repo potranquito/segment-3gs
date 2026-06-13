@@ -121,6 +121,75 @@ export class SegmentationRegistry {
     this.objects.delete(id);
   }
 
+  /**
+   * Deep-copy an object's full state so the eraser can offer undo. The copy is
+   * detached from the live object (typed arrays sliced, nested arrays cloned).
+   */
+  snapshotObject(id: string): SegmentedObject | null {
+    const o = this.objects.get(id);
+    if (!o) return null;
+    return {
+      ...o,
+      color: [o.color[0], o.color[1], o.color[2]],
+      splatIndices: o.splatIndices.slice(),
+      candidateIndices: o.candidateIndices.slice(),
+      voteCounts: o.voteCounts.slice(),
+      scoreSums: o.scoreSums.slice(),
+      centroid: [o.centroid[0], o.centroid[1], o.centroid[2]],
+      aabb: {
+        min: [o.aabb.min[0], o.aabb.min[1], o.aabb.min[2]],
+        max: [o.aabb.max[0], o.aabb.max[1], o.aabb.max[2]],
+      },
+    };
+  }
+
+  /** Reinsert a snapshot taken by snapshotObject (eraser undo). */
+  restoreObject(snapshot: SegmentedObject): void {
+    this.objects.set(snapshot.id, snapshot);
+  }
+
+  /**
+   * Erase every splat of an object inside a world-space sphere. Removal operates on
+   * the candidate EVIDENCE (not just the derived membership) — otherwise erased
+   * splats would resurrect on the next recomputeMembership/load. Deletes the object
+   * outright if nothing survives. Returns the number of candidates removed.
+   */
+  eraseSphere(id: string, center: Vec3, radius: number): number {
+    const object = this.objects.get(id);
+    if (!object) return 0;
+    const r2 = radius * radius;
+    const c = this.centers;
+    const n = object.candidateIndices.length;
+    const keep: number[] = [];
+    for (let k = 0; k < n; k += 1) {
+      const i3 = object.candidateIndices[k]! * 3;
+      const dx = c[i3]! - center[0];
+      const dy = c[i3 + 1]! - center[1];
+      const dz = c[i3 + 2]! - center[2];
+      if (dx * dx + dy * dy + dz * dz > r2) keep.push(k);
+    }
+    const removed = n - keep.length;
+    if (removed === 0) return 0;
+    if (keep.length === 0) {
+      this.objects.delete(id);
+      return removed;
+    }
+    const candidateIndices = new Uint32Array(keep.length);
+    const voteCounts = new Uint16Array(keep.length);
+    const scoreSums = new Float32Array(keep.length);
+    for (let i = 0; i < keep.length; i += 1) {
+      const k = keep[i]!;
+      candidateIndices[i] = object.candidateIndices[k]!;
+      voteCounts[i] = object.voteCounts[k]!;
+      scoreSums[i] = object.scoreSums[k]!;
+    }
+    object.candidateIndices = candidateIndices;
+    object.voteCounts = voteCounts;
+    object.scoreSums = scoreSums;
+    this.recomputeMembership(object);
+    return removed;
+  }
+
   clear(): void {
     this.objects.clear();
   }

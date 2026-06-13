@@ -11,6 +11,8 @@ export interface UiCallbacks {
   onBatchCancel: () => void;
   /** Toggle point-prompt mode (clicks on canvas send SAM a point + current concept). */
   onTogglePointMode: (active: boolean) => void;
+  /** Toggle eraser mode (clicks scrub splats out of the selected objects). */
+  onToggleEraser: (active: boolean) => void;
   /** Download labels.json for OpenPreserve to consume. */
   onExportLabels: () => void;
 }
@@ -31,6 +33,8 @@ export class SegmentationUi {
   private readonly progressBar: HTMLElement;
   private readonly progressText: HTMLElement;
   private readonly estimate: HTMLElement;
+  private pointBtn: HTMLButtonElement | null = null;
+  private eraserBtn: HTMLButtonElement | null = null;
 
   constructor(callbacks: UiCallbacks) {
     this.prompt = requireElement<HTMLInputElement>("#seg-prompt");
@@ -57,14 +61,23 @@ export class SegmentationUi {
     });
     // Point-click mode toggle — when on, clicks in the 3D canvas fire a SAM point prompt
     // (instead of orbiting the camera). The current "Concept" text becomes the label.
-    const pointBtn = document.getElementById("seg-point-mode") as HTMLButtonElement | null;
-    if (pointBtn) {
-      let active = false;
-      pointBtn.addEventListener("click", () => {
-        active = !active;
-        pointBtn.textContent = active ? "📍 Point Click Mode (ON)" : "📍 Point Click Mode (off)";
-        pointBtn.classList.toggle("seg-point-active", active);
+    // Mode state lives on the button's class so the system can force a mode off when
+    // the other one turns on (point mode and eraser are mutually exclusive).
+    this.pointBtn = document.getElementById("seg-point-mode") as HTMLButtonElement | null;
+    if (this.pointBtn) {
+      this.pointBtn.addEventListener("click", () => {
+        const active = !this.pointBtn!.classList.contains("seg-point-active");
+        this.setPointModeVisual(active);
         callbacks.onTogglePointMode(active);
+      });
+    }
+    // Eraser mode toggle — visuals are driven by the system (setEraserModeVisual) so
+    // the button always reflects the actual mode, however it was changed.
+    this.eraserBtn = document.getElementById("seg-eraser") as HTMLButtonElement | null;
+    if (this.eraserBtn) {
+      this.eraserBtn.addEventListener("click", () => {
+        const active = !this.eraserBtn!.classList.contains("seg-point-active");
+        callbacks.onToggleEraser(active);
       });
     }
     // Export labels button — downloads labels.json for OpenPreserve.
@@ -96,6 +109,18 @@ export class SegmentationUi {
 
   getPromptText(): string {
     return this.prompt.value.trim();
+  }
+
+  setPointModeVisual(active: boolean): void {
+    if (!this.pointBtn) return;
+    this.pointBtn.textContent = active ? "📍 Point Click Mode (ON)" : "📍 Point Click Mode (off)";
+    this.pointBtn.classList.toggle("seg-point-active", active);
+  }
+
+  setEraserModeVisual(active: boolean): void {
+    if (!this.eraserBtn) return;
+    this.eraserBtn.textContent = active ? "🧹 Eraser (ON)" : "🧹 Eraser (off)";
+    this.eraserBtn.classList.toggle("seg-point-active", active);
   }
 
   getConcepts(): string[] {

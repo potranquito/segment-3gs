@@ -44,6 +44,12 @@ export class SegmentationSystem {
   // using the current concept text as the label. Each click creates a new instance.
   private pointMode = false;
   private pointInstanceCounter = 0;
+  // Eraser mode — clicks scrub splats out of the SELECTED objects' evidence within a
+  // world-space sphere at the clicked depth (so corals behind the brush survive).
+  private eraserMode = false;
+  private brushPx = 28;
+  private readonly undoStack: SegmentedObject[][] = [];
+  private eraserRing: HTMLDivElement | null = null;
   // The 2D mask overlay is painted in screen space and can't track the scene in 3D, so it
   // only makes sense while the camera is still. We snapshot the camera position when the
   // overlay is drawn and clear it the moment the camera moves — the persistent 3D point
@@ -63,8 +69,10 @@ export class SegmentationSystem {
       onBatchCancel: () => this.cancelBatch(),
       onTogglePointMode: (active) => {
         this.pointMode = active;
+        if (active) this.setEraserMode(false);
         this.deps.canvas.style.cursor = active ? "crosshair" : "";
       },
+      onToggleEraser: (active) => this.setEraserMode(active),
       onExportLabels: () => this.exportLabels(),
     });
   }
@@ -99,20 +107,148 @@ export class SegmentationSystem {
     void this.reportServerStatus();
   }
 
-  // Canvas click handler — only fires when pointMode is ON. Converts the screen pixel
-  // to the downscaled capture-frame pixel and sends SAM a point prompt with the
-  // current "Concept" text as the label. Each click → new instance (auto-suffixed).
+  // Canvas click handler — fires in pointMode (SAM point prompt → new instance) and
+  // in eraserMode (scrub splats out of the selected objects at the clicked spot).
   private bindCanvasPointClick(): void {
     this.deps.canvas.addEventListener("click", (event) => {
-      if (!this.pointMode) return;
+      if (!this.pointMode && !this.eraserMode) return;
       if (this.busy || this.batchRunning) return;
       event.preventDefault();
       event.stopPropagation();
       const rect = this.deps.canvas.getBoundingClientRect();
       const cssX = event.clientX - rect.left;
       const cssY = event.clientY - rect.top;
+      if (this.eraserMode) {
+        this.eraseAt(cssX, cssY, rect);
+        return;
+      }
       void this.segmentAtPoint(cssX, cssY, rect.width, rect.height);
     });
+  }
+
+  private setEraserMode(active: boolean): void {
+    this.eraserMode = active;
+    if (active && this.pointMode) {
+      this.pointMode = false;
+      this.ui.setPointModeVisual(false);
+    }
+    this.deps.canvas.style.cursor = active ? "none" : this.pointMode ? "crosshair" : "";
+    this.ui.setEraserModeVisual(active);
+    this.ensureRing().style.display = active ? "block" : "none";
+    if (active) {
+      this.ui.setStatus(`Eraser on · select object(s), click to erase · [ ] brush size · Ctrl+Z undo`);
+    }
+  }
+
+  // Visual brush cursor — a fixed-position ring following the pointer at brush size.
+  private ensureRing(): HTMLDivElement {
+    if (this.eraserRing) return this.eraserRing;
+    const ring = document.createElement("div");
+    ring.style.cssText =
+      "position:fixed;pointer-events:none;border:1.5px solid rgba(255,255,255,0.9);" +
+      "box-shadow:0 0 4px rgba(0,0,0,0.7);border-radius:50%;display:none;z-index:40;" +
+      "transform:translate(-50%,-50%);";
+    document.body.appendChild(ring);
+    this.eraserRing = ring;
+    this.syncRingSize();
+    this.deps.canvas.addEventListener("pointermove", (event) => {
+      if (!this.eraserMode) return;
+      ring.style.left = `${event.clientX}px`;
+      ring.style.top = `${event.clientY}px`;
+    });
+    return ring;
+  }
+
+  private syncRingSize(): void {
+    if (!this.eraserRing) return;
+    this.eraserRing.style.width = `${this.brushPx * 2}px`;
+    this.eraserRing.style.height = `${this.brushPx * 2}px`;
+  }
+
+  // Erase: anchor on the nearest selected-object splat under the brush, convert the
+  // pixel brush to a world-space sphere at that depth, and remove all candidates of
+  // every selected object inside the sphere. Depth-anchoring means splats further
+  // behind the anchor (e.g. coral behind the rock) are untouched.
+  private eraseAt(cssX: number, cssY: number, rect: DOMRect): void {
+    if (!this.grid || !this.registry) return;
+    if (this.selectedIds.size === 0) {
+      this.ui.setStatus("Select an object in the list first, then click its splats to erase");
+      return;
+    }
+    const cam = this.deps.camera.camera;
+    if (!cam) return;
+    const origin = this.deps.camera.getPosition();
+    const farPoint = new pc.Vec3();
+    cam.screenToWorld(cssX, cssY, cam.farClip, farPoint);
+    const dir = farPoint.clone().sub(origin).normalize();
+    const fovRad = (cam.fov * Math.PI) / 180;
+    const focalPx = rect.height / 2 / Math.tan(fovRad / 2);
+    const brushAngular = this.brushPx / focalPx;
+
+    const c = this.grid.centers;
+    let bestT = Infinity;
+    for (const id of this.selectedIds) {
+      const object = this.registry.get(id);
+      if (!object) continue;
+      const idxs = object.candidateIndices;
+      for (let k = 0; k < idxs.length; k += 1) {
+        const i3 = idxs[k]! * 3;
+        const vx = c[i3]! - origin.x;
+        const vy = c[i3 + 1]! - origin.y;
+        const vz = c[i3 + 2]! - origin.z;
+        const t = vx * dir.x + vy * dir.y + vz * dir.z;
+        if (t <= 0 || t >= bestT) continue;
+        const perp2 = vx * vx + vy * vy + vz * vz - t * t;
+        const maxPerp = brushAngular * t;
+        if (perp2 <= maxPerp * maxPerp) bestT = t;
+      }
+    }
+    if (!Number.isFinite(bestT)) {
+      this.ui.setStatus("No selected splats under the brush");
+      return;
+    }
+    const radius = Math.max(brushAngular * bestT, this.grid.cellSizeValue * 0.5);
+    const center: [number, number, number] = [
+      origin.x + dir.x * bestT,
+      origin.y + dir.y * bestT,
+      origin.z + dir.z * bestT,
+    ];
+
+    const snapshots: SegmentedObject[] = [];
+    let removed = 0;
+    for (const id of [...this.selectedIds]) {
+      const snapshot = this.registry.snapshotObject(id);
+      if (!snapshot) continue;
+      const count = this.registry.eraseSphere(id, center, radius);
+      if (count > 0) {
+        snapshots.push(snapshot);
+        removed += count;
+      }
+      // eraseSphere deletes an object that loses every splat — drop it from selection.
+      if (!this.registry.get(id)) {
+        this.selectedIds.delete(id);
+        this.persistSelection();
+      }
+    }
+    if (removed === 0) {
+      this.ui.setStatus("Nothing erased");
+      return;
+    }
+    this.undoStack.push(snapshots);
+    if (this.undoStack.length > 30) this.undoStack.shift();
+    this.refresh();
+    this.registry.save();
+    this.ui.setStatus(`Erased ${removed.toLocaleString()} splats · Ctrl+Z to undo`);
+  }
+
+  private undoErase(): void {
+    if (!this.registry) return;
+    const snapshots = this.undoStack.pop();
+    if (!snapshots) return;
+    for (const snapshot of snapshots) this.registry.restoreObject(snapshot);
+    this.refresh();
+    this.registry.save();
+    this.ui.setStatus(`Undid erase · restored ${snapshots.length} object${snapshots.length === 1 ? "" : "s"}`);
   }
 
   private async segmentAtPoint(cssX: number, cssY: number, cssW: number, cssH: number): Promise<void> {
@@ -213,13 +349,35 @@ export class SegmentationSystem {
 
   private bindKeyboard(): void {
     const keyboard = this.deps.app.keyboard;
-    if (!keyboard) return;
-    keyboard.on(pc.EVENT_KEYDOWN, (event: pc.KeyboardEvent) => {
-      if (event.key !== pc.KEY_G) return;
+    if (keyboard) {
+      keyboard.on(pc.EVENT_KEYDOWN, (event: pc.KeyboardEvent) => {
+        if (event.key !== pc.KEY_G) return;
+        if (isTextFieldFocused()) return;
+        if (this.batchRunning) return;
+        event.event?.preventDefault();
+        void this.segment(this.ui.getPromptText());
+      });
+    }
+    // Eraser hotkeys: [ / ] resize the brush, Ctrl+Z undoes the last erase.
+    window.addEventListener("keydown", (event) => {
       if (isTextFieldFocused()) return;
-      if (this.batchRunning) return;
-      event.event?.preventDefault();
-      void this.segment(this.ui.getPromptText());
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
+        if (this.undoStack.length > 0) {
+          event.preventDefault();
+          this.undoErase();
+        }
+        return;
+      }
+      if (!this.eraserMode) return;
+      if (event.key === "[") {
+        this.brushPx = Math.max(8, this.brushPx - 6);
+      } else if (event.key === "]") {
+        this.brushPx = Math.min(140, this.brushPx + 6);
+      } else {
+        return;
+      }
+      this.syncRingSize();
+      this.ui.setStatus(`Eraser brush ${this.brushPx}px`);
     });
   }
 
